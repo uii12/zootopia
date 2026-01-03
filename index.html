@@ -74,6 +74,7 @@
             display: flex; flex-direction: column; align-items: center; justify-content: center;
             transition: opacity 1s ease;
         }
+
         .loader-text { color: #ff9ecd; font-family: 'Great Vibes', cursive; margin-top: 20px; font-size: 30px; }
         .spinner {
             width: 30px; height: 30px; border: 2px solid rgba(255, 158, 205, 0.2); 
@@ -81,6 +82,23 @@
         }
         @keyframes spin { to { transform: rotate(360deg); } }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(-20px); } to { opacity: 1; transform: translateY(0); } }
+        @media (max-width: 768px) {
+    h1 {
+        font-size: 20px;
+        letter-spacing: 2px;
+    }
+    #visualizer-canvas {
+        width: 80%;
+        height: 40px;
+        bottom: 15px;
+    }
+    #webcam-wrapper {
+        width: 90px;
+        height: 70px;
+        opacity: 0.3;
+    }
+}
+
     </style>
     
     <script type="importmap">
@@ -98,7 +116,7 @@
     <div id="background-layer"></div><div id="noise-overlay"></div><div id="canvas-container"></div>
     <canvas id="visualizer-canvas"></canvas>
     <div id="ui-layer">
-        <h1 id="main-title">CAROT_PEN</h1>
+        <h1 id="main-title">CAROT</h1>
         <div class="guide-container"><span class="guide-text" id="guide-text">Đang chuẩn bị...</span></div>
     </div>
     <div id="webcam-wrapper"><video id="webcam" autoplay playsinline muted></video><div id="status-bar">Init...</div></div>
@@ -107,33 +125,36 @@
     <audio id="audio-letter" src="./audio2.mp3" loop></audio>
 
     <script type="module">
-        const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
         import * as THREE from 'three';
         import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
         import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
         import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
         import { FilesetResolver, HandLandmarker } from '@mediapipe/tasks-vision';
-
-       const CONFIG = {
-    maxCount: isMobile ? 3000 : 20000,
-    particleSize: isMobile ? 0.12 : 0.08,
+const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+        const CONFIG = {
+            maxCount: isMobile ? 6000 : 20000,
+    particleSize: isMobile ? 0.1 : 0.08,
     spread: 100,
     fadeSpeed: 2.0,
-    slideSpeed: 15.0,
+    slideSpeed: isMobile ? 8.0 : 15.0,
     slideGap: 40,
     smoothFactor: 0.12,
-    gestureThreshold: isMobile ? 6 : 10,
+    gestureThreshold: isMobile ? 15 : 10,
     heartThreshold: 0.15,
-    sparkleCount: isMobile ? 40 : 150
+    sparkleCount: isMobile ? 60 : 150  
+        };
+const GESTURE = {
+    pinch: isMobile ? 0.075 : 0.06,
+    open: isMobile ? 0.38 : 0.35,
+    fist: isMobile ? 0.18 : 0.17,
+    holdTime: isMobile ? 12 : 8
 };
-
-
         const IMG_FOX = './target.png'; 
         const IMG_PEN = './target2.png'; 
         const IMG_LETTER = './mess.png'; 
         const IMG_PHOTO_SINGLE = './photo.png';
         
-        const SLIDE_IMAGES = ['./image/1.jpg', './image/2.jpg', './image/3.jpg', './image/4.jpg', './image/5.png', './image/6.png'];
+        const SLIDE_IMAGES = ['./image/1.jpg', './image/2.jpg', './image/3.jpg', './image/4.jpg', './image/5.jpg', './image/6.jpg'];
 
         let scene, camera, renderer, composer, clock, bloomPass;
         let mainGroup, instancedMesh, messageMesh, singlePhotoMesh, slideshowGroup; 
@@ -252,18 +273,20 @@
             camera.position.z = 70;
             renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: "default", alpha: true }); 
             renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+            renderer.setPixelRatio(isMobile ? 1.0 : Math.min(window.devicePixelRatio, 1.5));
             container.appendChild(renderer.domElement);
             clock = new THREE.Clock();
         }
         function setupPostProcessing() {
             const renderScene = new RenderPass(scene, camera);
-            bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth/4, window.innerHeight/4), 1.5, 0.8, 0.8);
+            bloomPass = new UnrealBloomPass( new THREE.Vector2(
+        isMobile ? window.innerWidth / 8 : window.innerWidth / 4,
+        isMobile ? window.innerHeight / 8 : window.innerHeight / 4
+    ),
+    isMobile ? 0.6 : 1.5,
+    0.6,
+    0.8);
             bloomPass.threshold = 0; bloomPass.strength = 0; bloomPass.radius = 0.5;
-            if (isMobile) {
-    bloomPass.strength = 0;
-}
-
             composer = new EffectComposer(renderer); composer.addPass(renderScene); composer.addPass(bloomPass);
         }
 
@@ -460,6 +483,9 @@
                 let sum = 0; for (let i = 0; i < 20; i++) { sum += audioDataArray[i]; }
                 musicBass = (sum / 20) / 255; 
             }
+if (!isMobile || (Math.floor(clock.elapsedTime * 20) % 2 === 0)) {
+    drawVisualizer();
+}
 
             updateParticles(dt, musicBass); 
             updateGlitter(dt); updateFloatingStars(dt); 
@@ -550,14 +576,9 @@
         let lastVideoTime = -1;
         async function initMediaPipe() {
             const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm");
-            handLandmarker = await HandLandmarker.createFromOptions(vision, { baseOptions: { modelAssetPath: `https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task`,delegate: isMobile ? "CPU" : "GPU",}, runningMode: "VIDEO", numHands: isMobile ? 1 : 2});
+            handLandmarker = await HandLandmarker.createFromOptions(vision, { baseOptions: { modelAssetPath: `https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task`, delegate: "GPU" }, runningMode: "VIDEO", numHands: 2 });
             video = document.getElementById("webcam");
-            navigator.mediaDevices.getUserMedia({
-    video: isMobile
-        ? { width: 640, height: 480, facingMode: "user" }
-        : true
-})
-.then((stream) => { video.srcObject = stream; video.addEventListener("loadeddata", predictWebcam); });
+            navigator.mediaDevices.getUserMedia({ video: true }).then((stream) => { video.srcObject = stream; video.addEventListener("loadeddata", predictWebcam); });
         }
         async function predictWebcam() {
             if (video.currentTime !== lastVideoTime && video.readyState >= 2) {
@@ -571,14 +592,15 @@
                         handParallax.x += (targetX - handParallax.x) * CONFIG.smoothFactor; handParallax.y += (targetY - handParallax.y) * CONFIG.smoothFactor;
                         let isHeart = false; 
                         const lm = result.landmarks[0]; const wrist = lm[0]; const thumbTip = lm[4]; const indexTip = lm[8];
-                        const pinchDist = Math.hypot(indexTip.x - thumbTip.x, indexTip.y - thumbTip.y);
+                        const pinchDist = Math.hypot((indexTip.x - thumbTip.x) * 1.2,
+    (indexTip.y - thumbTip.y) * 1.2);
                         const dIndex = Math.hypot(lm[8].x - wrist.x, lm[8].y - wrist.y); const dMid = Math.hypot(lm[12].x - wrist.x, lm[12].y - wrist.y); const dRing = Math.hypot(lm[16].x - wrist.x, lm[16].y - wrist.y); const dPinky = Math.hypot(lm[20].x - wrist.x, lm[20].y - wrist.y); const avgOpen = (dIndex + dMid + dRing + dPinky) / 4;
                         if (result.landmarks.length === 2) { const hand1 = result.landmarks[0]; const hand2 = result.landmarks[1]; const distThumbs = Math.hypot(hand1[4].x - hand2[4].x, hand1[4].y - hand2[4].y); const distIndexes = Math.hypot(hand1[8].x - hand2[8].x, hand1[8].y - hand2[8].y); if (distThumbs < CONFIG.heartThreshold && distIndexes < CONFIG.heartThreshold) { isHeart = true; } }
                         const rawFist = (avgOpen < 0.17); const rawPinch = (pinchDist < 0.06) && !rawFist; const rawOpen = (avgOpen > 0.35); 
                         if(rawPinch) gestureBuffer.pinch++; else gestureBuffer.pinch = 0; if(rawOpen) gestureBuffer.open++; else gestureBuffer.open = 0; if(rawFist) gestureBuffer.fist++; else gestureBuffer.fist = 0; if(isHeart) gestureBuffer.heart++; else gestureBuffer.heart = 0;
                         const activePinch = gestureBuffer.pinch > CONFIG.gestureThreshold; const activeOpen = gestureBuffer.open > CONFIG.gestureThreshold; const activeFist = gestureBuffer.fist > CONFIG.gestureThreshold; const activeHeart = gestureBuffer.heart > CONFIG.gestureThreshold; 
                         if (Date.now() > interactionLock) {
-                            if (appState === 'FOX') { if (!isMobile && activeHeart) changeState('SLIDESHOW'); else if (activeFist) changeState('TRANSITION_TO_PEN'); }
+                            if (appState === 'FOX') { if (activeHeart) changeState('SLIDESHOW'); else if (activeFist) changeState('TRANSITION_TO_PEN'); }
                             else if (appState === 'PEN') { if (activePinch) changeState('READING_LETTER'); else if (activeOpen) changeState('BACK_TO_FOX'); }
                             else if (['READING_LETTER', 'SLIDESHOW', 'VIEW_PHOTO'].includes(appState)) { if (activeOpen) changeState('BACK_TO_FOX'); }
                         }
@@ -624,7 +646,6 @@
             init();
         }
         _0xInit();
-        
     </script>
 </body>
 </html>
