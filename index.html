@@ -201,9 +201,14 @@ const GESTURE = {
                 .then(() => { useImageData(1); updateStatus("Loading AI Vision..."); })
                 .catch(err => { console.error("Error assets", err); updateStatus("Error assets"); });
 
-            await initMediaPipe();
-            setupEvents();
-            initVisualizer2D();
+           setupEvents();
+initVisualizer2D();
+
+hideLoading(); // <-- hiện cảnh NGAY
+
+setTimeout(() => {
+    initMediaPipe(); // load tay sau
+}, isMobile ? 1200 : 500);
             
             const _hexCre = "";
             const _cId = 'dhao-copyright';
